@@ -1,0 +1,11 @@
+# wrangler.toml
+
+name = "myidea-gobang-online"
+
+main = "src/index.js"
+
+compatibility_date = "2024-07-25"
+
+[site]
+bucket = "./public"
+
