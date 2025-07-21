@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <main id="app-root">
+            <div id="home-view" class="view active">
+                <h1>五子棋游戏</h1>
+                <p class="subtitle">Gobang</p>
+                <div class="menu">
+                    <button id="home-to-classic-btn">经典五子棋</button>
+                    <button id="home-to-higher-btn">幕布五子棋</button>
+                    <button id="home-to-replay-btn">查看回放录像</button>
+                    <button id="home-to-about-btn">关于</button>
+                </div>
+            </div>
+
+            <div id="about-view" class="view">
+                <div id="about-content"></div>
+                <button class="back-to-home">返回首页</button>
+            </div>
+            
+            <div id="classic-menu-view" class="view">
+                <h1>经典五子棋</h1>
+                <p class="subtitle">Classic Gobang</p>
+                <div class="menu">
+                    <button class="start-game-btn" data-mode="classic" data-type="single">单人游戏</button>
+                    <button class="start-game-btn" data-mode="classic" data-type="dual">双人对战</button>
+                    <button class="back-to-home">返回首页</button>
+                </div>
+            </div>
+
+            <div id="higher-menu-view" class="view">
+                 <h1>幕布五子棋</h1>
+                <p class="subtitle">Higher Gobang</p>
+                <div class="menu">
+                    <button class="start-game-btn" data-mode="higher" data-type="single">单人游戏</button>
+                    <button class="start-game-btn" data-mode="higher" data-type="dual">双人对战</button>
+                    <button class="back-to-home">返回首页</button>
+                </div>
+            </div>
+
+            <div id="game-view" class="view">
+                <h1 id="game-title">游戏标题</h1>
+                <div id="game-clock" class="real-time-clock"></div>
+                
+                <div id="ai-status-panel" class="hidden">
+                    <p id="ai-status-text"></p>
+                    <div id="ai-controls" class="menu">
+                        </div>
+                </div>
+
+                <div class="game-area">
+                    <canvas id="gobang-board" width="600" height="600"></canvas>
+                    <div class="game-info-panel">
+                        <h2>对局信息</h2>
+                        <ul id="move-list"></ul>
+                        <div class="game-controls">
+                            <button id="game-back-to-home-btn">返回主菜单</button>
+                            <button id="undo-btn">悔棋</button>
+                            <button id="save-replay-btn">保存当前对局录像</button>
+                            <button id="toggle-board-btn" class="hidden">显示黑白子棋盘</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="replay-view" class="view">
+                <h1 id="replay-title">棋局录像回放</h1>
+                
+                <div id="replay-file-selector">
+                    <p>请选择一个 `.ftidea` 录像文件开始。</p>
+                    <input type="file" id="replay-file-input" accept=".ftidea">
+                    <button class="back-to-home" style="margin-top: 20px;">返回首页</button>
+                </div>
+            
+                <div id="replay-content" class="hidden">
+                    <div id="replay-meta-info" class="game-info-panel">
+                        </div>
+                    <div class="game-area">
+                        <canvas id="replay-board" width="600" height="600"></canvas>
+                        <div class="game-info-panel">
+                            <h2>对局信息</h2>
+                            <ul id="replay-move-list"></ul>
+                            <div id="replay-controls" class="game-controls">
+                                </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="game-settings-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>游戏设置</h2>
+            
+            <div id="single-player-options">
+                <fieldset>
+                    <legend>选择先后手</legend>
+                    <label><input type="radio" name="player-order" value="player" checked> 我先手 (执黑)</label>
+                    <label><input type="radio" name="player-order" value="ai"> AI先手 (执黑)</label>
+                </fieldset>
+                <fieldset>
+                    <legend>选择AI模型</legend>
+                    <select id="ai-model-select">
+                        <option value="BEGINNER_MODEL">低级模型</option>
+                        <option value="INTERMEDIATE_MODEL" selected>中级模型</option>
+                        <option value="ADVANCED_MODEL">高级模型</option>
+                    </select>
+                </fieldset>
+            </div>
+
+            <div id="classic-mode-options">
+                <fieldset>
+                    <legend>游戏规则</legend>
+                    <label><input type="checkbox" id="enable-forbidden-moves"> 启用禁手规则 (黑棋)</label>
+                </fieldset>
+            </div>
+            
+            <div id="higher-mode-options">
+                <fieldset>
+                    <legend>统一棋子颜色</legend>
+                     <label><input type="radio" name="unified-color" value="1" checked> 统一使用黑子</label>
+                     <label><input type="radio" name="unified-color" value="2"> 统一使用白子</label>
+                </fieldset>
+            </div>
+
+            <div class="modal-buttons">
+                <button id="confirm-start-game-btn">开始游戏</button>
+                <button id="cancel-settings-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
