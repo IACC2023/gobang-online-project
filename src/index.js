@@ -1,4 +1,4 @@
-// src/index.js (最终无依赖版本)
+// src/index.js
 
 // 模块作用域内的缓存变量
 let envCache = null;
