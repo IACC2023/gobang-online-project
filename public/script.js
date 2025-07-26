@@ -12,42 +12,47 @@ const replayState = {
     data: null, currentMoveIndex: -1, isPlaying: false, speed: 1.0, timerId: null, board: [],
 };
 
-
-// --- DOM 元素引用 ---
-const views = {
-    home: document.getElementById('home-view'),
-    classicMenu: document.getElementById('classic-menu-view'),
-    higherMenu: document.getElementById('higher-menu-view'),
-    game: document.getElementById('game-view'),
-    replay: document.getElementById('replay-view'),
-};
-
-const settingsModal = document.getElementById('game-settings-modal');
-const aboutModal = document.getElementById('about-modal');
-const boardCanvas = document.getElementById('gobang-board');
-const ctx = boardCanvas.getContext('2d');
-const moveListEl = document.getElementById('move-list');
-const gameTitleEl = document.getElementById('game-title');
-const gameClockEl = document.getElementById('game-clock');
-const toggleBoardBtn = document.getElementById('toggle-board-btn');
-const aiStatusPanel = document.getElementById('ai-status-panel');
-const aiStatusText = document.getElementById('ai-status-text');
-const aiControls = document.getElementById('ai-controls');
-const replayFileInput = document.getElementById('replay-file-input');
-const replayContentEl = document.getElementById('replay-content');
-const replayFileSelectorEl = document.getElementById('replay-file-selector');
-const replayBoardCanvas = document.getElementById('replay-board');
-const replayCtx = replayBoardCanvas.getContext('2d');
-const replayMoveListEl = document.getElementById('replay-move-list');
-const replayMetaInfoEl = document.getElementById('replay-meta-info');
-const replayControlsEl = document.getElementById('replay-controls');
-const replayTitleEl = document.getElementById('replay-title');
+// --- DOM 元素引用 (在此处仅声明) ---
+let views = {}; // **修复**: 在此处声明为空对象
+let settingsModal, aboutModal, boardCanvas, ctx, moveListEl, gameTitleEl, gameClockEl, toggleBoardBtn;
+let aiStatusPanel, aiStatusText, aiControls, replayFileInput, replayContentEl, replayFileSelectorEl;
+let replayBoardCanvas, replayCtx, replayMoveListEl, replayMetaInfoEl, replayControlsEl, replayTitleEl;
 
 const GRID_SIZE = 15;
-const CELL_SIZE = boardCanvas.width / GRID_SIZE;
+let CELL_SIZE; // 将在初始化时计算
 
 // --- 初始化与事件监听 ---
 document.addEventListener('DOMContentLoaded', () => {
+    // **修复**: DOM加载完成后再获取所有元素引用
+    views = {
+        home: document.getElementById('home-view'),
+        classicMenu: document.getElementById('classic-menu-view'),
+        higherMenu: document.getElementById('higher-menu-view'),
+        game: document.getElementById('game-view'),
+        replay: document.getElementById('replay-view'),
+    };
+    settingsModal = document.getElementById('game-settings-modal');
+    aboutModal = document.getElementById('about-modal');
+    boardCanvas = document.getElementById('gobang-board');
+    ctx = boardCanvas.getContext('2d');
+    CELL_SIZE = boardCanvas.width / GRID_SIZE;
+    moveListEl = document.getElementById('move-list');
+    gameTitleEl = document.getElementById('game-title');
+    gameClockEl = document.getElementById('game-clock');
+    toggleBoardBtn = document.getElementById('toggle-board-btn');
+    aiStatusPanel = document.getElementById('ai-status-panel');
+    aiStatusText = document.getElementById('ai-status-text');
+    aiControls = document.getElementById('ai-controls');
+    replayFileInput = document.getElementById('replay-file-input');
+    replayContentEl = document.getElementById('replay-content');
+    replayFileSelectorEl = document.getElementById('replay-file-selector');
+    replayBoardCanvas = document.getElementById('replay-board');
+    replayCtx = replayBoardCanvas.getContext('2d');
+    replayMoveListEl = document.getElementById('replay-move-list');
+    replayMetaInfoEl = document.getElementById('replay-meta-info');
+    replayControlsEl = document.getElementById('replay-controls');
+    replayTitleEl = document.getElementById('replay-title');
+
     setupEventListeners();
     drawBoard();
     setInterval(updateClock, 1000);
@@ -55,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
-    // **修复**: 明确绑定首页按钮的导航事件
+    // 首页按钮
     document.getElementById('home-to-classic-btn').addEventListener('click', () => {
         document.title = '五子棋 – 经典五子棋';
         showView('classicMenu');
@@ -117,7 +122,6 @@ function setupEventListeners() {
 
 // --- 页面导航逻辑 ---
 function showView(viewId) {
-    document.title = '五子棋';
     for (const id in views) {
         if (views[id]) {
             views[id].classList.remove('active');
@@ -338,6 +342,7 @@ function getLinePattern(board, x, y, dir) {
 function isLiveFour(board, x, y, dir) { const p = getLinePattern(board, x, y, dir); return p.includes('_BBBB_'); }
 function isLiveThree(board, x, y, dir) { if (isLiveFour(board,x,y,dir)) return false; const p = getLinePattern(board,x,y,dir); return p.includes('_B_BB_') || p.includes('_BB_B_'); }
 
+
 // --- AI 对战与本地智能 ---
 function getAiMove() {
     if (gameState.isAiThinking) return;
@@ -420,11 +425,10 @@ function getMoveScore(board, x, y, player) {
 }
 
 // --- UI 更新与辅助函数 ---
-/**
- * **修复**: 增加错误处理和内容检查
- */
 async function loadAboutInfo() {
     const contentEl = document.getElementById('about-modal-content');
+    contentEl.innerHTML = '<p>正在加载信息...</p>'; // Show loading indicator
+    aboutModal.classList.remove('hidden');
     try {
         const response = await fetch('/api/about');
         if (!response.ok) {
@@ -439,8 +443,6 @@ async function loadAboutInfo() {
     } catch (error) {
         console.error('加载“关于”信息失败:', error);
         contentEl.innerHTML = `<p style="color: red;">加载信息时出错: ${error.message}</p>`;
-    } finally {
-        aboutModal.classList.remove('hidden');
     }
 }
 
@@ -484,10 +486,13 @@ function updateClock() {
 // --- 存盘与回放 ---
 function saveReplay() {
     if (gameState.moveHistory.length === 0) { alert("对局尚未开始，无法保存！"); return; }
+    const validMoves = getValidMovesFromHistory();
+    const lastValidMove = validMoves.length > 0 ? validMoves[validMoves.length - 1] : null;
+    const winner = gameState.isGameActive ? "interrupted" : (lastValidMove ? lastValidMove.player : "unknown");
     const replayData = {
         fileFormatVersion: "1.1",
         saveTimestamp: new Date().toISOString(),
-        gameInfo: { mode: gameState.mode, type: gameState.type, options: gameState.gameOptions, startTime: gameState.startTime, winner: gameState.isGameActive ? "interrupted" : gameState.board[getValidMovesFromHistory().pop().y][getValidMovesFromHistory().pop().x], },
+        gameInfo: { mode: gameState.mode, type: gameState.type, options: gameState.gameOptions, startTime: gameState.startTime, winner: winner },
         deviceInfo: { userAgent: navigator.userAgent },
         moveHistory: gameState.moveHistory
     };
@@ -623,20 +628,21 @@ function scheduleNextMove() {
 
 
 // --- 绘图函数 ---
-function drawBoard() {
-    ctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
-    ctx.fillStyle = 'hsla(34, 59%, 68%, 1)';
-    ctx.fillRect(0,0,boardCanvas.width, boardCanvas.height);
-    ctx.strokeStyle = 'hsla(34, 41%, 29%, 1)';
-    ctx.lineWidth = 1;
+function drawBoard(canvas = boardCanvas) {
+    const localCtx = canvas.getContext('2d');
+    localCtx.clearRect(0, 0, canvas.width, canvas.height);
+    localCtx.fillStyle = 'hsla(34, 59%, 68%, 1)';
+    localCtx.fillRect(0,0,canvas.width, canvas.height);
+    localCtx.strokeStyle = 'hsla(34, 41%, 29%, 1)';
+    localCtx.lineWidth = 1;
     for (let i = 0; i < GRID_SIZE; i++) {
         const pos = CELL_SIZE / 2 + i * CELL_SIZE;
-        ctx.beginPath(); ctx.moveTo(pos, CELL_SIZE / 2); ctx.lineTo(pos, boardCanvas.height - CELL_SIZE / 2); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(CELL_SIZE / 2, pos); ctx.lineTo(boardCanvas.width - CELL_SIZE / 2, pos); ctx.stroke();
+        localCtx.beginPath(); localCtx.moveTo(pos, CELL_SIZE / 2); localCtx.lineTo(pos, canvas.height - CELL_SIZE / 2); localCtx.stroke();
+        localCtx.beginPath(); localCtx.moveTo(CELL_SIZE / 2, pos); localCtx.lineTo(canvas.width - CELL_SIZE / 2, pos); localCtx.stroke();
     }
     const starPoints = [ {x:3, y:3}, {x:11, y:3}, {x:7, y:7}, {x:3, y:11}, {x:11, y:11} ];
-    ctx.fillStyle = 'hsla(34, 41%, 29%, 1)';
-    starPoints.forEach(p => { ctx.beginPath(); ctx.arc(CELL_SIZE/2 + p.x*CELL_SIZE, CELL_SIZE/2 + p.y*CELL_SIZE, CELL_SIZE/8, 0, 2*Math.PI); ctx.fill(); });
+    localCtx.fillStyle = 'hsla(34, 41%, 29%, 1)';
+    starPoints.forEach(p => { localCtx.beginPath(); localCtx.arc(CELL_SIZE/2 + p.x*CELL_SIZE, CELL_SIZE/2 + p.y*CELL_SIZE, CELL_SIZE/8, 0, 2*Math.PI); localCtx.fill(); });
 }
 
 function drawPieces() {
@@ -684,17 +690,15 @@ function drawRedDot(context, x, y) {
 }
 
 function drawReplayBoard() {
-    const context = replayCtx;
-    drawBoard.call({ ctx: context, boardCanvas: replayBoardCanvas }); // Reuse main drawBoard
-    
+    drawBoard(replayBoardCanvas);
     const lastMove = getValidMovesFromHistory(replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1)).pop();
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
             if (replayState.board[y][x] !== 0) {
                 const player = replayState.board[y][x];
-                drawPiece(context, x, y, player);
+                drawPiece(replayCtx, x, y, player);
                 if (lastMove && lastMove.x === x && lastMove.y === y) {
-                    drawRedDot(context, x, y);
+                    drawRedDot(replayCtx, x, y);
                 }
             }
         }
