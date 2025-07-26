@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <button id="global-about-btn">?</button>
+
     <div class="container">
         <main id="app-root">
             <div id="home-view" class="view active">
@@ -16,13 +18,7 @@
                     <button id="home-to-classic-btn">经典五子棋</button>
                     <button id="home-to-higher-btn">幕布五子棋</button>
                     <button id="home-to-replay-btn">查看回放录像</button>
-                    <button id="home-to-about-btn">关于</button>
                 </div>
-            </div>
-
-            <div id="about-view" class="view">
-                <div id="about-content"></div>
-                <button class="back-to-home">返回首页</button>
             </div>
             
             <div id="classic-menu-view" class="view">
@@ -51,8 +47,7 @@
                 
                 <div id="ai-status-panel" class="hidden">
                     <p id="ai-status-text"></p>
-                    <div id="ai-controls" class="menu">
-                        </div>
+                    <div id="ai-controls" class="menu"></div>
                 </div>
 
                 <div class="game-area">
@@ -78,17 +73,15 @@
                     <input type="file" id="replay-file-input" accept=".ftidea">
                     <button class="back-to-home" style="margin-top: 20px;">返回首页</button>
                 </div>
-            
+
                 <div id="replay-content" class="hidden">
-                    <div id="replay-meta-info" class="game-info-panel">
-                        </div>
+                    <div id="replay-meta-info" class="game-info-panel"></div>
                     <div class="game-area">
                         <canvas id="replay-board" width="600" height="600"></canvas>
                         <div class="game-info-panel">
                             <h2>对局信息</h2>
                             <ul id="replay-move-list"></ul>
-                            <div id="replay-controls" class="game-controls">
-                                </div>
+                            <div id="replay-controls" class="game-controls"></div>
                         </div>
                     </div>
                 </div>
@@ -134,6 +127,16 @@
             <div class="modal-buttons">
                 <button id="confirm-start-game-btn">开始游戏</button>
                 <button id="cancel-settings-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="about-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>关于</h2>
+            <div id="about-modal-content"></div>
+            <div class="modal-buttons">
+                 <button id="close-about-modal-btn">关闭</button>
             </div>
         </div>
     </div>
