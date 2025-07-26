@@ -1,28 +1,15 @@
-// public/script.js (最终完整版)
+// public/script.js
 
 // --- 全局状态管理 ---
 const gameState = {
-    mode: null, // 'classic' or 'higher'
-    type: null, // 'single' or 'dual'
-    board: [], // 15x15 棋盘, 0: empty, 1: black, 2: white
-    currentPlayer: 1, // 1: black, 2: white
+    mode: null, type: null, board: [], currentPlayer: 1,
     moveHistory: [], // action: {type: 'place' | 'undo', player, x, y, timestamp, originalMove?}
-    isGameActive: false,
-    gameOptions: {}, // 存储游戏设置
-    isTrueBoardVisible: false, // 用于幕布模式
-    startTime: null,
-    isAiThinking: false,
-    aiControlTimer5s: null,
-    aiControlTimer10s: null,
+    isGameActive: false, gameOptions: {}, isTrueBoardVisible: false,
+    startTime: null, isAiThinking: false, aiControlTimer5s: null, aiControlTimer10s: null,
 };
 
 const replayState = {
-    data: null,
-    currentMoveIndex: -1,
-    isPlaying: false,
-    speed: 1.0,
-    timerId: null,
-    board: [],
+    data: null, currentMoveIndex: -1, isPlaying: false, speed: 1.0, timerId: null, board: [],
 };
 
 
@@ -68,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
-    // 首页按钮
+    // **修复**: 明确绑定首页按钮的导航事件
     document.getElementById('home-to-classic-btn').addEventListener('click', () => {
         document.title = '五子棋 – 经典五子棋';
         showView('classicMenu');
@@ -77,7 +64,7 @@ function setupEventListeners() {
         document.title = '五子棋 – 幕布五子棋';
         showView('higherMenu');
     });
-     document.getElementById('home-to-replay-btn').addEventListener('click', () => {
+    document.getElementById('home-to-replay-btn').addEventListener('click', () => {
         document.title = '棋局录像回放';
         showView('replay');
     });
@@ -112,21 +99,37 @@ function setupEventListeners() {
         startGame(gameState.mode, gameState.type, options);
         settingsModal.classList.add('hidden');
     });
-
-    document.getElementById('cancel-settings-btn').addEventListener('click', () => {
-        settingsModal.classList.add('hidden');
-    });
+    document.getElementById('cancel-settings-btn').addEventListener('click', () => { settingsModal.classList.add('hidden'); });
     
     // 游戏内交互
     boardCanvas.addEventListener('click', handleBoardClick);
     document.getElementById('undo-btn').addEventListener('click', undoMove);
     document.getElementById('save-replay-btn').addEventListener('click', saveReplay);
-    document.getElementById('game-back-to-home-btn').addEventListener('click', () => showView('home'));
+    document.getElementById('game-back-to-home-btn').addEventListener('click', () => {
+        document.title = '五子棋 – 首页';
+        showView('home')
+    });
     toggleBoardBtn.addEventListener('click', toggleTrueBoard);
     
     // 回放文件加载
     replayFileInput.addEventListener('change', handleFileLoad);
 }
+
+// --- 页面导航逻辑 ---
+function showView(viewId) {
+    document.title = '五子棋';
+    for (const id in views) {
+        if (views[id]) {
+            views[id].classList.remove('active');
+        }
+    }
+    if (views[viewId]) {
+        views[viewId].classList.add('active');
+    } else {
+        console.error(`View with id "${viewId}" not found.`);
+    }
+}
+
 
 // --- 游戏设置与开始 ---
 function openSettingsModal(mode, type) {
@@ -156,12 +159,8 @@ function startGame(mode, type, options) {
     gameState.mode = mode;
     gameState.type = type;
 
-    if (mode === 'higher') {
-        toggleBoardBtn.classList.remove('hidden');
-        toggleBoardBtn.textContent = '显示黑白子棋盘';
-    } else {
-        toggleBoardBtn.classList.add('hidden');
-    }
+    if (mode === 'higher') { toggleBoardBtn.classList.remove('hidden'); toggleBoardBtn.textContent = '显示黑白子棋盘'; } 
+    else { toggleBoardBtn.classList.add('hidden'); }
     
     let title = mode === 'classic' ? '经典五子棋' : '幕布五子棋';
     title += ` – ${type === 'single' ? '单人游戏' : '双人对战'}`;
@@ -190,9 +189,7 @@ function handleBoardClick(event) {
 
     if (gameState.type === 'single') {
         const playerToken = gameState.gameOptions.playerOrder === 'player' ? 1 : 2;
-        if (gameState.currentPlayer !== playerToken) {
-            return;
-        }
+        if (gameState.currentPlayer !== playerToken) { return; }
     }
 
     const rect = boardCanvas.getBoundingClientRect();
@@ -205,12 +202,8 @@ function handleBoardClick(event) {
 }
 
 function placePiece(x, y) {
-    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE || gameState.board[y][x] !== 0) {
-        return;
-    }
-    if (gameState.isAiThinking) {
-        clearAiTimersAndHideControls();
-    }
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE || gameState.board[y][x] !== 0) { return; }
+    if (gameState.isAiThinking) { clearAiTimersAndHideControls(); }
     
     if (gameState.currentPlayer === 1 && gameState.gameOptions.enableForbiddenMoves) {
         if (getLineCount(x, y, 1, gameState.board).some(count => count === 5)) {
@@ -316,16 +309,8 @@ function getLineCount(x, y, player, board = gameState.board) {
     const directions = [{ dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }, { dx: 1, dy: -1 }];
     return directions.map(dir => {
         let count = 1;
-        for (let i = 1; i < 6; i++) {
-            const nx = x + i * dir.dx, ny = y + i * dir.dy;
-            if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && board[ny][nx] === player) count++;
-            else break;
-        }
-        for (let i = 1; i < 6; i++) {
-            const nx = x - i * dir.dx, ny = y - i * dir.dy;
-            if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && board[ny][nx] === player) count++;
-            else break;
-        }
+        for (let i = 1; i < 6; i++) { const nx = x + i * dir.dx, ny = y + i * dir.dy; if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && board[ny][nx] === player) count++; else break; }
+        for (let i = 1; i < 6; i++) { const nx = x - i * dir.dx, ny = y - i * dir.dy; if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && board[ny][nx] === player) count++; else break; }
         return count;
     });
 }
@@ -345,30 +330,13 @@ function isForbiddenMove(x, y) {
 
 function getLinePattern(board, x, y, dir) {
     let line = [{ p: board[y][x] }];
-    for (let i = 1; i <= 5; i++) {
-        const nx = x + i * dir.dx, ny = y + i * dir.dy;
-        if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) line.push({ p: board[ny][nx] });
-        else { line.push({ p: 3 }); break; }
-    }
-    for (let i = 1; i <= 5; i++) {
-        const nx = x - i * dir.dx, ny = y - i * dir.dy;
-        if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) line.unshift({ p: board[ny][nx] });
-        else { line.unshift({ p: 3 }); break; }
-    }
+    for (let i = 1; i <= 5; i++) { const nx = x + i * dir.dx, ny = y + i * dir.dy; if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) line.push({ p: board[ny][nx] }); else { line.push({ p: 3 }); break; } }
+    for (let i = 1; i <= 5; i++) { const nx = x - i * dir.dx, ny = y - i * dir.dy; if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) line.unshift({ p: board[ny][nx] }); else { line.unshift({ p: 3 }); break; } }
     return line.map(c => c.p === 1 ? 'B' : (c.p === 2 ? 'W' : (c.p === 0 ? '_' : 'E'))).join('');
 }
 
-function isLiveFour(board, x, y, dir) {
-    const p = getLinePattern(board, x, y, dir);
-    return p.includes('_BBBB_');
-}
-
-function isLiveThree(board, x, y, dir) {
-    if (isLiveFour(board, x, y, dir)) return false;
-    const p = getLinePattern(board, x, y, dir);
-    return p.includes('_B_BB_') || p.includes('_BB_B_');
-}
-
+function isLiveFour(board, x, y, dir) { const p = getLinePattern(board, x, y, dir); return p.includes('_BBBB_'); }
+function isLiveThree(board, x, y, dir) { if (isLiveFour(board,x,y,dir)) return false; const p = getLinePattern(board,x,y,dir); return p.includes('_B_BB_') || p.includes('_BB_B_'); }
 
 // --- AI 对战与本地智能 ---
 function getAiMove() {
@@ -376,18 +344,13 @@ function getAiMove() {
     gameState.isAiThinking = true;
     aiStatusPanel.classList.remove('hidden');
     updateAiStatus('AI 正在思考中...', []);
-
     gameState.aiControlTimer5s = setTimeout(() => { updateAiStatus('AI 思考时间过长...', ['retry']); }, 5000);
     gameState.aiControlTimer10s = setTimeout(() => { updateAiStatus('AI 无响应，您可以...', ['retry', 'override', 'local']); }, 10000);
-
     fetch('/api/get-ai-move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            boardState: gameState.board,
-            moveHistory: getValidMovesFromHistory(),
-            aiModel: gameState.gameOptions.aiModel,
-            playerColor: gameState.currentPlayer,
+            boardState: gameState.board, moveHistory: getValidMovesFromHistory(),
+            aiModel: gameState.gameOptions.aiModel, playerColor: gameState.currentPlayer,
         }),
     })
     .then(res => res.ok ? res.json() : Promise.reject(new Error(`API 错误: ${res.status}`)))
@@ -409,35 +372,9 @@ function getAiMove() {
 function updateAiStatus(text, buttonsToShow) {
     aiStatusText.textContent = text;
     aiControls.innerHTML = '';
-    if (buttonsToShow.includes('retry')) {
-        const btn = document.createElement('button');
-        btn.textContent = '重试';
-        btn.onclick = () => { clearAiTimersAndHideControls(); getAiMove(); };
-        aiControls.appendChild(btn);
-    }
-    if (buttonsToShow.includes('override')) {
-        const btn = document.createElement('button');
-        btn.textContent = '替AI下棋';
-        btn.onclick = () => {
-            alert('请在棋盘上为您想让AI下的位置点击。');
-            clearAiTimersAndHideControls();
-        };
-        aiControls.appendChild(btn);
-    }
-    if (buttonsToShow.includes('local')) {
-        const btn = document.createElement('button');
-        btn.textContent = '使用本地智能';
-        btn.onclick = () => {
-            clearAiTimersAndHideControls();
-            const move = calculateLocalAiMove();
-            if (move) {
-                placePiece(move.x, move.y);
-            } else {
-                alert("本地智能未能找到合适的棋步。");
-            }
-        };
-        aiControls.appendChild(btn);
-    }
+    if (buttonsToShow.includes('retry')) { const btn = document.createElement('button'); btn.textContent = '重试'; btn.onclick = () => { clearAiTimersAndHideControls(); getAiMove(); }; aiControls.appendChild(btn); }
+    if (buttonsToShow.includes('override')) { const btn = document.createElement('button'); btn.textContent = '替AI下棋'; btn.onclick = () => { alert('请在棋盘上为您想让AI下的位置点击。'); clearAiTimersAndHideControls(); }; aiControls.appendChild(btn); }
+    if (buttonsToShow.includes('local')) { const btn = document.createElement('button'); btn.textContent = '使用本地智能'; btn.onclick = () => { clearAiTimersAndHideControls(); const move = calculateLocalAiMove(); if (move) { placePiece(move.x, move.y); } else { alert("本地智能未能找到合适的棋步。"); } }; aiControls.appendChild(btn); }
 }
 
 function clearAiTimersAndHideControls() {
@@ -450,18 +387,14 @@ function clearAiTimersAndHideControls() {
 function calculateLocalAiMove() {
     const board = gameState.board;
     const aiPlayer = gameState.currentPlayer;
-    const humanPlayer = aiPlayer === 1 ? 2 : 1;
     let bestScore = -Infinity;
     let bestMove = null;
-
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
             if (board[y][x] === 0) {
-                const aiScore = getMoveScore(board, x, y, aiPlayer);
-                const humanScore = getMoveScore(board, x, y, humanPlayer);
-                const totalScore = aiScore + humanScore * 0.9; // 防守权重略低于进攻
-                if (totalScore > bestScore) {
-                    bestScore = totalScore;
+                const score = getMoveScore(board, x, y, aiPlayer);
+                if (score > bestScore) {
+                    bestScore = score;
                     bestMove = { x, y };
                 }
             }
@@ -473,37 +406,49 @@ function calculateLocalAiMove() {
 function getMoveScore(board, x, y, player) {
     const scores = { 5: 100000, 4: 10000, 3: 100, 2: 10, 1: 1 };
     let totalScore = 0;
+    const opponent = player === 1 ? 2 : 1;
+    // Calculate offensive score
     board[y][x] = player;
-    const counts = getLineCount(x, y, player, board);
+    let counts = getLineCount(x, y, player, board);
+    counts.forEach(count => { totalScore += scores[Math.min(count, 5)] || 0; });
+    // Calculate defensive score
+    board[y][x] = opponent;
+    counts = getLineCount(x, y, opponent, board);
+    counts.forEach(count => { totalScore += (scores[Math.min(count, 5)] || 0) * 0.9; });
     board[y][x] = 0;
-    counts.forEach(count => {
-        totalScore += scores[Math.min(count, 5)] || 0;
-    });
     return totalScore;
 }
 
 // --- UI 更新与辅助函数 ---
+/**
+ * **修复**: 增加错误处理和内容检查
+ */
 async function loadAboutInfo() {
+    const contentEl = document.getElementById('about-modal-content');
     try {
         const response = await fetch('/api/about');
+        if (!response.ok) {
+            throw new Error(`API 请求失败，状态: ${response.status}`);
+        }
         const html = await response.text();
-        document.getElementById('about-modal-content').innerHTML = html;
-        aboutModal.classList.remove('hidden');
+        if (!html.trim()) {
+            contentEl.innerHTML = '<p>未能加载“关于”信息，内容为空。</p>';
+        } else {
+            contentEl.innerHTML = html;
+        }
     } catch (error) {
         console.error('加载“关于”信息失败:', error);
+        contentEl.innerHTML = `<p style="color: red;">加载信息时出错: ${error.message}</p>`;
+    } finally {
+        aboutModal.classList.remove('hidden');
     }
 }
 
 function updateMoveList() {
     moveListEl.innerHTML = '';
     if (!gameState.moveHistory) return;
-
     const moveIndexMap = new Map();
-    getValidMovesFromHistory().forEach((move, index) => {
-        const key = `${move.x}-${move.y}-${move.timestamp}`;
-        moveIndexMap.set(key, index);
-    });
-    
+    getValidMovesFromHistory().forEach((move, index) => { const key = `${move.x}-${move.y}-${move.timestamp}`; moveIndexMap.set(key, index); });
     gameState.moveHistory.slice().reverse().forEach(action => {
         const li = document.createElement('li');
         const time = new Date(action.timestamp).toLocaleTimeString();
@@ -519,8 +464,7 @@ function updateMoveList() {
         } else {
             let playerText = action.player === 1 ? '黑方' : '白方';
             text = `${time} - ${playerText} 进行了悔棋`;
-            li.style.color = 'var(--secondary-color)';
-            li.style.fontStyle = 'italic';
+            li.style.color = 'var(--secondary-color)'; li.style.fontStyle = 'italic';
         }
         li.textContent = text;
         moveListEl.appendChild(li);
@@ -534,24 +478,18 @@ function updateClock() {
     const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
     const offsetSign = timezoneOffset >= 0 ? '+' : '-';
     const timezone = `(UTC${offsetSign}${offsetHours})`;
-    if (views.game.classList.contains('active')) {
-        gameClockEl.textContent = `${formattedTime} ${timezone}`;
-    }
+    if (views.game.classList.contains('active')) { gameClockEl.textContent = `${formattedTime} ${timezone}`; }
 }
-
 
 // --- 存盘与回放 ---
 function saveReplay() {
-    if (gameState.moveHistory.length === 0) {
-        alert("对局尚未开始，无法保存！");
-        return;
-    }
+    if (gameState.moveHistory.length === 0) { alert("对局尚未开始，无法保存！"); return; }
     const replayData = {
-        fileFormatVersion: "1.1", // Updated version for new undo logic
+        fileFormatVersion: "1.1",
         saveTimestamp: new Date().toISOString(),
-        gameInfo: { mode: gameState.mode, type: gameState.type, options: gameState.gameOptions, startTime: gameState.startTime, winner: gameState.isGameActive ? "interrupted" : gameState.currentPlayer, },
+        gameInfo: { mode: gameState.mode, type: gameState.type, options: gameState.gameOptions, startTime: gameState.startTime, winner: gameState.isGameActive ? "interrupted" : gameState.board[getValidMovesFromHistory().pop().y][getValidMovesFromHistory().pop().x], },
         deviceInfo: { userAgent: navigator.userAgent },
-        moveHistory: gameState.moveHistory // Save the complete action history
+        moveHistory: gameState.moveHistory
     };
     const jsonString = JSON.stringify(replayData, null, 2);
     const date = new Date(gameState.startTime);
@@ -674,8 +612,8 @@ function scheduleNextMove() {
     }
     const currentAction = replayState.data.moveHistory[replayState.currentMoveIndex];
     const nextAction = replayState.data.moveHistory[replayState.currentMoveIndex + 1];
-    let timeDiff = nextAction.timestamp - (currentAction ? currentAction.timestamp : replayState.data.gameInfo.startTime);
-    if (nextAction.type === 'undo') timeDiff = 1000; // 悔棋步骤固定1秒
+    let timeDiff = nextAction.timestamp - (currentAction ? currentAction.timestamp : new Date(replayState.data.gameInfo.startTime).getTime());
+    if (nextAction.type === 'undo') timeDiff = 1000;
     const delay = Math.max(100, timeDiff / replayState.speed);
     replayState.timerId = setTimeout(() => {
         handleReplayNext();
@@ -724,7 +662,7 @@ function drawPiece(context, x, y, player) {
     const centerY = CELL_SIZE / 2 + y * CELL_SIZE;
     context.arc(centerX, centerY, radius, 0, 2 * Math.PI);
     let pieceColor;
-    if (gameState.isGameActive && gameState.mode === 'higher' && !gameState.isTrueBoardVisible) {
+    if (context === ctx && gameState.isGameActive && gameState.mode === 'higher' && !gameState.isTrueBoardVisible) {
         pieceColor = gameState.gameOptions.unifiedColor === '1' ? 'black' : 'white';
     } else {
         pieceColor = player === 1 ? 'black' : 'white';
@@ -747,12 +685,8 @@ function drawRedDot(context, x, y) {
 
 function drawReplayBoard() {
     const context = replayCtx;
-    context.clearRect(0, 0, replayBoardCanvas.width, replayBoardCanvas.height);
-    context.fillStyle = 'hsla(34, 59%, 68%, 1)';
-    context.fillRect(0,0,replayBoardCanvas.width, replayBoardCanvas.height);
-    context.strokeStyle = 'hsla(34, 41%, 29%, 1)';
-    context.lineWidth = 1;
-    for (let i = 0; i < GRID_SIZE; i++) { const pos = CELL_SIZE / 2 + i * CELL_SIZE; context.beginPath(); context.moveTo(pos, CELL_SIZE / 2); context.lineTo(pos, replayBoardCanvas.height - CELL_SIZE / 2); context.stroke(); context.beginPath(); context.moveTo(CELL_SIZE / 2, pos); context.lineTo(replayBoardCanvas.width - CELL_SIZE / 2, pos); context.stroke(); }
+    drawBoard.call({ ctx: context, boardCanvas: replayBoardCanvas }); // Reuse main drawBoard
+    
     const lastMove = getValidMovesFromHistory(replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1)).pop();
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
