@@ -195,12 +195,14 @@ function handleBoardClick(event) {
         const playerToken = gameState.gameOptions.playerOrder === 'player' ? 1 : 2;
         if (gameState.currentPlayer !== playerToken) { return; }
     }
-
+    
+    // **修复**: 采用比例计算法，防止CSS缩放导致错位
     const rect = boardCanvas.getBoundingClientRect();
-    const canvasX = event.clientX - rect.left;
-    const canvasY = event.clientY - rect.top;
-    const x = Math.round((canvasX - CELL_SIZE / 2) / CELL_SIZE);
-    const y = Math.round((canvasY - CELL_SIZE / 2) / CELL_SIZE);
+    const xRatio = (event.clientX - rect.left) / rect.width;
+    const yRatio = (event.clientY - rect.top) / rect.height;
+    
+    const x = Math.round(xRatio * (GRID_SIZE - 1));
+    const y = Math.round(yRatio * (GRID_SIZE - 1));
     
     placePiece(x, y);
 }
@@ -427,7 +429,7 @@ function getMoveScore(board, x, y, player) {
 // --- UI 更新与辅助函数 ---
 async function loadAboutInfo() {
     const contentEl = document.getElementById('about-modal-content');
-    contentEl.innerHTML = '<p>正在加载信息...</p>'; // Show loading indicator
+    contentEl.innerHTML = '<p>正在加载信息...</p>';
     aboutModal.classList.remove('hidden');
     try {
         const response = await fetch('/api/about');
@@ -509,20 +511,26 @@ function saveReplay() {
 }
 
 function handleFileLoad(event) {
+    console.log("File selected. Starting load process...");
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
+            console.log("File parsed successfully.");
             if (!data.fileFormatVersion || !data.moveHistory) throw new Error("无效的录像文件格式。");
             setupReplay(data);
-        } catch (error) { alert(`加载录像文件失败: ${error.message}`); }
+        } catch (error) { 
+            console.error("Failed to load or parse replay file:", error);
+            alert(`加载录像文件失败: ${error.message}`); 
+        }
     };
     reader.readAsText(file);
 }
 
 function setupReplay(data) {
+    console.log("Setting up replay UI...");
     replayState.data = data;
     replayState.currentMoveIndex = -1;
     replayState.isPlaying = false;
@@ -547,6 +555,7 @@ function setupReplay(data) {
     startFromHereBtn.textContent = '从当前对局情况开始';
     startFromHereBtn.onclick = initiateGameFromReplay;
     replayControlsEl.appendChild(startFromHereBtn);
+    console.log("Replay controls created.");
     renderReplayStep();
 }
 
@@ -696,9 +705,21 @@ function drawReplayBoard() {
         for (let x = 0; x < GRID_SIZE; x++) {
             if (replayState.board[y][x] !== 0) {
                 const player = replayState.board[y][x];
-                drawPiece(replayCtx, x, y, player);
+                // 在回放时，我们总是显示真实颜色，不应用幕布模式
+                const pieceColor = player === 1 ? 'black' : 'white';
+                const context = replayCtx;
+                context.beginPath();
+                const radius = CELL_SIZE / 2 * 0.9;
+                const centerX = CELL_SIZE / 2 + x * CELL_SIZE;
+                const centerY = CELL_SIZE / 2 + y * CELL_SIZE;
+                context.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                context.fillStyle = pieceColor;
+                context.fill();
+                context.strokeStyle = '#555';
+                context.stroke();
+
                 if (lastMove && lastMove.x === x && lastMove.y === y) {
-                    drawRedDot(replayCtx, x, y);
+                    drawRedDot(context, x, y);
                 }
             }
         }
