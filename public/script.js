@@ -1,4 +1,4 @@
-// public/script.js
+// public/script.js (最终完整版)
 
 // --- 全局状态管理 ---
 const gameState = {
@@ -6,17 +6,17 @@ const gameState = {
     type: null, // 'single' or 'dual'
     board: [], // 15x15 棋盘, 0: empty, 1: black, 2: white
     currentPlayer: 1, // 1: black, 2: white
-    moveHistory: [], // [{player, x, y, timestamp}, ...]
+    moveHistory: [], // action: {type: 'place' | 'undo', player, x, y, timestamp, originalMove?}
     isGameActive: false,
     gameOptions: {}, // 存储游戏设置
-    isTrueBoardVisible: false, // 用于幕布模式，跟踪是否显示真实棋盘
-    startTime: null, // 记录对局开始时间
+    isTrueBoardVisible: false, // 用于幕布模式
+    startTime: null,
     isAiThinking: false,
     aiControlTimer5s: null,
     aiControlTimer10s: null,
 };
 
-const replayState = { // 回放状态管理
+const replayState = {
     data: null,
     currentMoveIndex: -1,
     isPlaying: false,
@@ -29,7 +29,6 @@ const replayState = { // 回放状态管理
 // --- DOM 元素引用 ---
 const views = {
     home: document.getElementById('home-view'),
-    about: document.getElementById('about-view'),
     classicMenu: document.getElementById('classic-menu-view'),
     higherMenu: document.getElementById('higher-menu-view'),
     game: document.getElementById('game-view'),
@@ -37,6 +36,7 @@ const views = {
 };
 
 const settingsModal = document.getElementById('game-settings-modal');
+const aboutModal = document.getElementById('about-modal');
 const boardCanvas = document.getElementById('gobang-board');
 const ctx = boardCanvas.getContext('2d');
 const moveListEl = document.getElementById('move-list');
@@ -58,15 +58,6 @@ const replayTitleEl = document.getElementById('replay-title');
 
 const GRID_SIZE = 15;
 const CELL_SIZE = boardCanvas.width / GRID_SIZE;
-
-// --- 页面导航逻辑 ---
-function showView(viewId) {
-    document.title = '五子棋';
-    for (const id in views) {
-        views[id].classList.remove('active');
-    }
-    views[viewId].classList.add('active');
-}
 
 // --- 初始化与事件监听 ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -90,8 +81,11 @@ function setupEventListeners() {
         document.title = '棋局录像回放';
         showView('replay');
     });
-    document.getElementById('home-to-about-btn').addEventListener('click', loadAboutInfo);
     
+    // 全局关于按钮
+    document.getElementById('global-about-btn').addEventListener('click', loadAboutInfo);
+    document.getElementById('close-about-modal-btn').addEventListener('click', () => aboutModal.classList.add('hidden'));
+
     // 返回首页按钮
     document.querySelectorAll('.back-to-home').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -103,9 +97,7 @@ function setupEventListeners() {
     // 开始游戏按钮
     document.querySelectorAll('.start-game-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const mode = e.target.dataset.mode;
-            const type = e.target.dataset.type;
-            openSettingsModal(mode, type);
+            openSettingsModal(e.target.dataset.mode, e.target.dataset.type);
         });
     });
 
@@ -140,25 +132,19 @@ function setupEventListeners() {
 function openSettingsModal(mode, type) {
     gameState.mode = mode;
     gameState.type = type;
-
     document.getElementById('single-player-options').style.display = type === 'single' ? 'block' : 'none';
     document.getElementById('classic-mode-options').style.display = mode === 'classic' ? 'block' : 'none';
     document.getElementById('higher-mode-options').style.display = mode === 'higher' ? 'block' : 'none';
-
     settingsModal.classList.remove('hidden');
 }
 
 function startGame(mode, type, options) {
-    console.log(`Starting game: ${mode}, ${type}`, options);
     gameState.gameOptions = options;
-    
     if (options.initialBoard) {
-        // 从回放状态恢复
         gameState.board = options.initialBoard;
         gameState.currentPlayer = options.initialPlayer;
         gameState.moveHistory = options.initialMoveHistory;
     } else {
-        // 开始一个全新的游戏
         gameState.board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
         gameState.currentPlayer = 1;
         gameState.moveHistory = [];
@@ -167,14 +153,16 @@ function startGame(mode, type, options) {
     gameState.isGameActive = true;
     gameState.isTrueBoardVisible = false;
     gameState.startTime = new Date().toISOString(); 
+    gameState.mode = mode;
+    gameState.type = type;
 
-    // 更新UI
     if (mode === 'higher') {
         toggleBoardBtn.classList.remove('hidden');
         toggleBoardBtn.textContent = '显示黑白子棋盘';
     } else {
         toggleBoardBtn.classList.add('hidden');
     }
+    
     let title = mode === 'classic' ? '经典五子棋' : '幕布五子棋';
     title += ` – ${type === 'single' ? '单人游戏' : '双人对战'}`;
     if (type === 'single') {
@@ -188,7 +176,6 @@ function startGame(mode, type, options) {
     drawPieces();
     showView('game');
 
-    // 检查恢复后的游戏是否轮到AI
     if (type === 'single' && gameState.isGameActive) {
         const aiPlayer = options.playerOrder === 'player' ? 2 : 1;
         if (gameState.currentPlayer === aiPlayer) {
@@ -197,7 +184,6 @@ function startGame(mode, type, options) {
     }
 }
 
-
 // --- 游戏核心逻辑 ---
 function handleBoardClick(event) {
     if (!gameState.isGameActive || gameState.isAiThinking) return;
@@ -205,14 +191,15 @@ function handleBoardClick(event) {
     if (gameState.type === 'single') {
         const playerToken = gameState.gameOptions.playerOrder === 'player' ? 1 : 2;
         if (gameState.currentPlayer !== playerToken) {
-            console.log("现在是AI的回合");
             return;
         }
     }
 
     const rect = boardCanvas.getBoundingClientRect();
-    const x = Math.floor((event.clientX - rect.left) / (CELL_SIZE + 0.5));
-    const y = Math.floor((event.clientY - rect.top) / (CELL_SIZE + 0.5));
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
+    const x = Math.round((canvasX - CELL_SIZE / 2) / CELL_SIZE);
+    const y = Math.round((canvasY - CELL_SIZE / 2) / CELL_SIZE);
     
     placePiece(x, y);
 }
@@ -221,24 +208,22 @@ function placePiece(x, y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE || gameState.board[y][x] !== 0) {
         return;
     }
-    
     if (gameState.isAiThinking) {
         clearAiTimersAndHideControls();
     }
     
-    // 禁手规则判断
     if (gameState.currentPlayer === 1 && gameState.gameOptions.enableForbiddenMoves) {
-        if (getLineCount(x, y, 1).some(count => count === 5)) {
-            // 制胜一步，不是禁手
+        if (getLineCount(x, y, 1, gameState.board).some(count => count === 5)) {
+            // Winning move is not forbidden
         } else if (isForbiddenMove(x, y)) {
             alert("禁手落子点: 您不能在此处形成长连、双四或双三。");
             return;
         }
     }
 
-    gameState.board[y][x] = gameState.currentPlayer;
-    const move = { player: gameState.currentPlayer, x, y, timestamp: Date.now() };
-    gameState.moveHistory.push(move);
+    const action = { type: 'place', player: gameState.currentPlayer, x, y, timestamp: Date.now() };
+    gameState.moveHistory.push(action);
+    rebuildBoardFromHistory();
 
     updateMoveList();
     drawBoard();
@@ -251,16 +236,16 @@ function placePiece(x, y) {
             drawBoard();
             drawPieces();
         }
-        let winnerText = gameState.currentPlayer === 1 ? '黑棋' : '白棋';
+        let winnerText;
         if (gameState.mode === 'higher') {
-            const winnerIndex = gameState.moveHistory.length - 1;
-            winnerText = winnerIndex % 2 === 0 ? '玩家P1' : '玩家P2';
+            const validMoves = getValidMovesFromHistory();
+            winnerText = validMoves.length % 2 !== 0 ? '玩家P1' : '玩家P2';
+        } else {
+            winnerText = gameState.currentPlayer === 1 ? '黑棋' : '白棋';
         }
         setTimeout(() => alert(`${winnerText} 胜利!`), 100);
         return;
     }
-
-    gameState.currentPlayer = gameState.currentPlayer === 1 ? 2 : 1;
 
     if (gameState.type === 'single' && gameState.isGameActive) {
         const aiPlayer = gameState.gameOptions.playerOrder === 'player' ? 2 : 1;
@@ -273,9 +258,7 @@ function placePiece(x, y) {
 function checkWin(x, y) {
     const player = gameState.board[y][x];
     if (player === 0) return false;
-
     const counts = getLineCount(x, y, player);
-
     if (player === 1 && gameState.gameOptions.enableForbiddenMoves) {
         return counts.some(count => count === 5);
     } else {
@@ -283,13 +266,55 @@ function checkWin(x, y) {
     }
 }
 
+// --- 悔棋与状态重构 ---
+function rebuildBoardFromHistory() {
+    const board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
+    const validMoves = getValidMovesFromHistory();
+    validMoves.forEach(move => {
+        board[move.y][move.x] = move.player;
+    });
+    gameState.board = board;
+    const lastValidMove = validMoves[validMoves.length - 1];
+    gameState.currentPlayer = lastValidMove ? (lastValidMove.player % 2) + 1 : 1;
+}
 
-// --- 禁手规则逻辑 ---
+function getValidMovesFromHistory(history = gameState.moveHistory) {
+    const moveStack = [];
+    for (const action of history) {
+        if (action.type === 'place') {
+            moveStack.push(action);
+        } else if (action.type === 'undo') {
+            moveStack.pop();
+        }
+    }
+    return moveStack;
+}
+
+function undoMove() {
+    const validMoves = getValidMovesFromHistory();
+    if (validMoves.length === 0) {
+        alert("没有棋步可以悔棋。");
+        return;
+    }
+
+    const lastValidMove = validMoves[validMoves.length - 1];
+    const action = { type: 'undo', player: lastValidMove.player, originalMove: lastValidMove, timestamp: Date.now() };
+    gameState.moveHistory.push(action);
+    
+    if (!gameState.isGameActive) {
+        gameState.isGameActive = true;
+    }
+    
+    rebuildBoardFromHistory();
+    updateMoveList();
+    drawBoard();
+    drawPieces();
+}
+
+// --- 禁手规则 ---
 function getLineCount(x, y, player, board = gameState.board) {
     const directions = [{ dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }, { dx: 1, dy: -1 }];
-    const counts = [];
-
-    for (const dir of directions) {
+    return directions.map(dir => {
         let count = 1;
         for (let i = 1; i < 6; i++) {
             const nx = x + i * dir.dx, ny = y + i * dir.dy;
@@ -301,120 +326,93 @@ function getLineCount(x, y, player, board = gameState.board) {
             if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE && board[ny][nx] === player) count++;
             else break;
         }
-        counts.push(count);
-    }
-    return counts;
+        return count;
+    });
 }
 
 function isForbiddenMove(x, y) {
-    const player = 1;
     const tempBoard = JSON.parse(JSON.stringify(gameState.board));
-    tempBoard[y][x] = player;
-
-    const lineCounts = getLineCount(x, y, player, tempBoard);
-    if (lineCounts.some(count => count > 5)) {
-        return true; // 长连
-    }
-
-    let fourCount = 0;
-    let threeCount = 0;
+    tempBoard[y][x] = 1;
+    if (getLineCount(x, y, 1, tempBoard).some(c => c > 5)) return true;
+    let fourCount = 0, threeCount = 0;
     const directions = [{ dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }, { dx: 1, dy: -1 }];
-
     for (const dir of directions) {
         if (isLiveFour(tempBoard, x, y, dir)) fourCount++;
         if (isLiveThree(tempBoard, x, y, dir)) threeCount++;
     }
-    
     return fourCount >= 2 || threeCount >= 2;
 }
 
 function getLinePattern(board, x, y, dir) {
     let line = [{ p: board[y][x] }];
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 5; i++) {
         const nx = x + i * dir.dx, ny = y + i * dir.dy;
         if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) line.push({ p: board[ny][nx] });
-        else line.push({ p: 3 });
+        else { line.push({ p: 3 }); break; }
     }
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 5; i++) {
         const nx = x - i * dir.dx, ny = y - i * dir.dy;
         if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) line.unshift({ p: board[ny][nx] });
-        else line.unshift({ p: 3 });
+        else { line.unshift({ p: 3 }); break; }
     }
     return line.map(c => c.p === 1 ? 'B' : (c.p === 2 ? 'W' : (c.p === 0 ? '_' : 'E'))).join('');
 }
 
 function isLiveFour(board, x, y, dir) {
-    const pattern = getLinePattern(board, x, y, dir);
-    const patterns = ['_BBBB_', 'B_BBB', 'BB_BB', 'BBB_B'];
-    return patterns.some(p => pattern.includes(p));
+    const p = getLinePattern(board, x, y, dir);
+    return p.includes('_BBBB_');
 }
 
 function isLiveThree(board, x, y, dir) {
-    const pattern = getLinePattern(board, x, y, dir);
-    if (isLiveFour(board, x, y, dir)) return false; 
-    const patterns = ['_B_BB_', '_BB_B_'];
-    return patterns.some(p => pattern.includes(p));
+    if (isLiveFour(board, x, y, dir)) return false;
+    const p = getLinePattern(board, x, y, dir);
+    return p.includes('_B_BB_') || p.includes('_BB_B_');
 }
 
-// --- AI 对战逻辑 ---
+
+// --- AI 对战与本地智能 ---
 function getAiMove() {
     if (gameState.isAiThinking) return;
-
     gameState.isAiThinking = true;
-    aiStatusText.textContent = 'AI 正在思考中...';
     aiStatusPanel.classList.remove('hidden');
-    aiControls.innerHTML = '';
+    updateAiStatus('AI 正在思考中...', []);
 
-    const aiPlayer = gameState.gameOptions.playerOrder === 'player' ? 2 : 1;
-
-    if (gameState.aiControlTimer5s) clearTimeout(gameState.aiControlTimer5s);
-    if (gameState.aiControlTimer10s) clearTimeout(gameState.aiControlTimer10s);
-
-    gameState.aiControlTimer5s = setTimeout(() => {
-        aiStatusText.textContent = 'AI 思考时间过长...';
-        showAiControls(['retry']);
-    }, 5000);
-
-    gameState.aiControlTimer10s = setTimeout(() => {
-        showAiControls(['retry', 'override', 'local']);
-    }, 10000);
+    gameState.aiControlTimer5s = setTimeout(() => { updateAiStatus('AI 思考时间过长...', ['retry']); }, 5000);
+    gameState.aiControlTimer10s = setTimeout(() => { updateAiStatus('AI 无响应，您可以...', ['retry', 'override', 'local']); }, 10000);
 
     fetch('/api/get-ai-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             boardState: gameState.board,
-            moveHistory: gameState.moveHistory,
+            moveHistory: getValidMovesFromHistory(),
             aiModel: gameState.gameOptions.aiModel,
-            playerColor: aiPlayer,
+            playerColor: gameState.currentPlayer,
         }),
     })
-    .then(res => res.ok ? res.json() : Promise.reject(new Error(`API 错误，状态码: ${res.status}`)))
+    .then(res => res.ok ? res.json() : Promise.reject(new Error(`API 错误: ${res.status}`)))
     .then(data => {
         if (data.error) throw new Error(data.error);
+        clearAiTimersAndHideControls();
         const [y, x] = data.move;
-        
         if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE || gameState.board[y][x] !== 0) {
-            console.error("AI返回了无效坐标:", data.move);
-            aiStatusText.textContent = 'AI 返回了无效棋步，正在自动重试...';
-            getAiMove();
-            return;
+            throw new Error("AI返回了无效坐标");
         }
         placePiece(x, y);
     })
     .catch(err => {
         console.error('AI请求失败:', err);
-        aiStatusText.textContent = `AI 出错: ${err.message}`;
-        showAiControls(['retry', 'override', 'local']);
+        updateAiStatus(`AI 出错: ${err.message}`, ['retry', 'override', 'local']);
     });
 }
 
-function showAiControls(buttonsToShow) {
+function updateAiStatus(text, buttonsToShow) {
+    aiStatusText.textContent = text;
     aiControls.innerHTML = '';
     if (buttonsToShow.includes('retry')) {
         const btn = document.createElement('button');
         btn.textContent = '重试';
-        btn.onclick = getAiMove;
+        btn.onclick = () => { clearAiTimersAndHideControls(); getAiMove(); };
         aiControls.appendChild(btn);
     }
     if (buttonsToShow.includes('override')) {
@@ -430,8 +428,13 @@ function showAiControls(buttonsToShow) {
         const btn = document.createElement('button');
         btn.textContent = '使用本地智能';
         btn.onclick = () => {
-            alert('本地智能功能：请在棋盘上为您想让AI下的位置点击。');
             clearAiTimersAndHideControls();
+            const move = calculateLocalAiMove();
+            if (move) {
+                placePiece(move.x, move.y);
+            } else {
+                alert("本地智能未能找到合适的棋步。");
+            }
         };
         aiControls.appendChild(btn);
     }
@@ -441,84 +444,101 @@ function clearAiTimersAndHideControls() {
     if (gameState.aiControlTimer5s) clearTimeout(gameState.aiControlTimer5s);
     if (gameState.aiControlTimer10s) clearTimeout(gameState.aiControlTimer10s);
     aiStatusPanel.classList.add('hidden');
-    aiControls.innerHTML = '';
     gameState.isAiThinking = false;
 }
 
-// --- 游戏内控制与UI更新 ---
-function undoMove() {
-    if (gameState.moveHistory.length === 0) return;
+function calculateLocalAiMove() {
+    const board = gameState.board;
+    const aiPlayer = gameState.currentPlayer;
+    const humanPlayer = aiPlayer === 1 ? 2 : 1;
+    let bestScore = -Infinity;
+    let bestMove = null;
 
-    const stepsToUndo = (gameState.type === 'single' && gameState.moveHistory.length > 1) ? 2 : 1;
-    if (gameState.moveHistory.length < stepsToUndo) {
-        const move = gameState.moveHistory.pop();
-        gameState.board[move.y][move.x] = 0;
-        gameState.currentPlayer = move.player;
-    } else {
-        for (let i = 0; i < stepsToUndo; i++) {
-            const lastMove = gameState.moveHistory.pop();
-            gameState.board[lastMove.y][lastMove.x] = 0;
-            gameState.currentPlayer = lastMove.player;
+    for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+            if (board[y][x] === 0) {
+                const aiScore = getMoveScore(board, x, y, aiPlayer);
+                const humanScore = getMoveScore(board, x, y, humanPlayer);
+                const totalScore = aiScore + humanScore * 0.9; // 防守权重略低于进攻
+                if (totalScore > bestScore) {
+                    bestScore = totalScore;
+                    bestMove = { x, y };
+                }
+            }
         }
     }
-    
-    if (!gameState.isGameActive) gameState.isGameActive = true;
-    if (gameState.mode === 'higher') {
-        gameState.isTrueBoardVisible = false;
-        toggleBoardBtn.textContent = '显示黑白子棋盘';
-    }
-
-    updateMoveList();
-    drawBoard();
-    drawPieces();
+    return bestMove;
 }
 
-function toggleTrueBoard() {
-    if (gameState.mode !== 'higher' || !gameState.isGameActive) return;
-    gameState.isTrueBoardVisible = !gameState.isTrueBoardVisible;
-    toggleBoardBtn.textContent = gameState.isTrueBoardVisible ? '恢复幕布棋盘' : '显示黑白子棋盘';
-    drawBoard();
-    drawPieces();
+function getMoveScore(board, x, y, player) {
+    const scores = { 5: 100000, 4: 10000, 3: 100, 2: 10, 1: 1 };
+    let totalScore = 0;
+    board[y][x] = player;
+    const counts = getLineCount(x, y, player, board);
+    board[y][x] = 0;
+    counts.forEach(count => {
+        totalScore += scores[Math.min(count, 5)] || 0;
+    });
+    return totalScore;
+}
+
+// --- UI 更新与辅助函数 ---
+async function loadAboutInfo() {
+    try {
+        const response = await fetch('/api/about');
+        const html = await response.text();
+        document.getElementById('about-modal-content').innerHTML = html;
+        aboutModal.classList.remove('hidden');
+    } catch (error) {
+        console.error('加载“关于”信息失败:', error);
+    }
 }
 
 function updateMoveList() {
-    moveListEl.innerHTML = ''; 
+    moveListEl.innerHTML = '';
     if (!gameState.moveHistory) return;
+
+    const moveIndexMap = new Map();
+    getValidMovesFromHistory().forEach((move, index) => {
+        const key = `${move.x}-${move.y}-${move.timestamp}`;
+        moveIndexMap.set(key, index);
+    });
     
-    gameState.moveHistory.forEach((move, index) => {
+    gameState.moveHistory.slice().reverse().forEach(action => {
         const li = document.createElement('li');
-        const time = new Date(move.timestamp).toLocaleTimeString();
-        let playerText = '';
-        if (gameState.mode === 'higher') {
-            playerText = index % 2 === 0 ? '玩家P1' : '玩家P2'; 
+        const time = new Date(action.timestamp).toLocaleTimeString();
+        let text = '';
+        if (action.type === 'place') {
+            const key = `${action.x}-${action.y}-${action.timestamp}`;
+            const moveIndex = moveIndexMap.get(key);
+            let playerText = action.player === 1 ? '黑子' : '白子';
+            if (gameState.mode === 'higher' && moveIndex !== undefined) {
+                playerText = moveIndex % 2 === 0 ? '玩家P1' : '玩家P2';
+            }
+            text = `${time} - ${playerText} 落子于 (${action.x}, ${action.y})`;
         } else {
-            playerText = move.player === 1 ? '黑子' : '白子';
+            let playerText = action.player === 1 ? '黑方' : '白方';
+            text = `${time} - ${playerText} 进行了悔棋`;
+            li.style.color = 'var(--secondary-color)';
+            li.style.fontStyle = 'italic';
         }
-        li.textContent = `${time} - ${playerText} 落子于 (${move.x}, ${move.y})`;
-        moveListEl.prepend(li);
+        li.textContent = text;
+        moveListEl.appendChild(li);
     });
 }
 
 function updateClock() {
     const now = new Date();
     const formattedTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${now.toLocaleTimeString()}`;
-    const timezone = `(UTC${now.getTimezoneOffset() > 0 ? '-' : '+'}${Math.abs(now.getTimezoneOffset() / 60)})`;
+    const timezoneOffset = -now.getTimezoneOffset();
+    const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
+    const offsetSign = timezoneOffset >= 0 ? '+' : '-';
+    const timezone = `(UTC${offsetSign}${offsetHours})`;
     if (views.game.classList.contains('active')) {
         gameClockEl.textContent = `${formattedTime} ${timezone}`;
     }
 }
 
-async function loadAboutInfo() {
-    try {
-        const response = await fetch('/api/about');
-        const html = await response.text();
-        document.getElementById('about-content').innerHTML = html;
-        document.title = '五子棋 – 关于';
-        showView('about');
-    } catch (error) {
-        console.error('加载“关于”信息失败:', error);
-    }
-}
 
 // --- 存盘与回放 ---
 function saveReplay() {
@@ -526,56 +546,35 @@ function saveReplay() {
         alert("对局尚未开始，无法保存！");
         return;
     }
-
     const replayData = {
-        fileFormatVersion: "1.0",
+        fileFormatVersion: "1.1", // Updated version for new undo logic
         saveTimestamp: new Date().toISOString(),
-        gameInfo: {
-            mode: gameState.mode,
-            type: gameState.type,
-            options: gameState.gameOptions,
-            startTime: gameState.startTime,
-            winner: gameState.isGameActive ? "interrupted" : gameState.currentPlayer,
-        },
+        gameInfo: { mode: gameState.mode, type: gameState.type, options: gameState.gameOptions, startTime: gameState.startTime, winner: gameState.isGameActive ? "interrupted" : gameState.currentPlayer, },
         deviceInfo: { userAgent: navigator.userAgent },
-        moveHistory: gameState.moveHistory.map(move => ({
-            player: move.player,
-            x: move.x,
-            y: move.y,
-            timestamp: move.timestamp
-        }))
+        moveHistory: gameState.moveHistory // Save the complete action history
     };
-
     const jsonString = JSON.stringify(replayData, null, 2);
     const date = new Date(gameState.startTime);
     const timeString = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}`;
     const filenameSuffix = "GobangReplay";
     const filename = `${timeString}-${filenameSuffix}.ftidea`;
-
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 
 function handleFileLoad(event) {
     const file = event.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
             if (!data.fileFormatVersion || !data.moveHistory) throw new Error("无效的录像文件格式。");
             setupReplay(data);
-        } catch (error) {
-            alert(`加载录像文件失败: ${error.message}`);
-        }
+        } catch (error) { alert(`加载录像文件失败: ${error.message}`); }
     };
     reader.readAsText(file);
 }
@@ -589,47 +588,36 @@ function setupReplay(data) {
 
     replayFileSelectorEl.classList.add('hidden');
     replayContentEl.classList.remove('hidden');
-
     const startTime = new Date(data.gameInfo.startTime);
     replayTitleEl.textContent = `${startTime.toLocaleString()} 的五子棋棋局回放录像`;
-    let winnerText = data.gameInfo.winner === 'interrupted' ? '中断对局，对局尚未分出胜负' : (data.gameInfo.winner === 1 ? '黑棋' : '白棋');
+    let winnerText = data.gameInfo.winner === 'interrupted' ? '中断对局' : (data.gameInfo.winner === 1 ? '黑棋' : '白棋');
     replayMetaInfoEl.innerHTML = `<p><strong>对局时间:</strong> ${startTime.toLocaleString()}</p><p><strong>对局模式:</strong> ${data.gameInfo.mode} - ${data.gameInfo.type}</p><p><strong>最终获胜者:</strong> ${winnerText}</p>`;
-
+    
     replayControlsEl.innerHTML = '';
-    const controls = [
-        { text: '返回主菜单', action: () => { showView('home'); replayContentEl.classList.add('hidden'); replayFileSelectorEl.classList.remove('hidden'); replayFileInput.value = ''; } },
-        { text: '上一步', action: handleReplayPrev },
-        { text: '暂停/继续', action: handleReplayPlayPause },
-        { text: '下一步', action: handleReplayNext },
-    ];
+    const controls = [ { text: '返回主菜单', action: () => { showView('home'); replayContentEl.classList.add('hidden'); replayFileSelectorEl.classList.remove('hidden'); replayFileInput.value = ''; } }, { text: '上一步', action: handleReplayPrev }, { text: '暂停/继续', action: handleReplayPlayPause }, { text: '下一步', action: handleReplayNext }, ];
     controls.forEach(c => { const btn = document.createElement('button'); btn.textContent = c.text; btn.onclick = c.action; replayControlsEl.appendChild(btn); });
     const speedSelect = document.createElement('select');
     [1, 2, 4, 8].forEach(s => { const opt = document.createElement('option'); opt.value = s; opt.textContent = `${s}x 倍速`; speedSelect.appendChild(opt); });
     speedSelect.onchange = (e) => { replayState.speed = parseFloat(e.target.value); };
     replayControlsEl.appendChild(speedSelect);
-
     const startFromHereBtn = document.createElement('button');
     startFromHereBtn.textContent = '从当前对局情况开始';
     startFromHereBtn.onclick = initiateGameFromReplay;
     replayControlsEl.appendChild(startFromHereBtn);
-
     renderReplayStep();
 }
 
 function initiateGameFromReplay() {
     if (!replayState.data) return;
     const capturedBoard = JSON.parse(JSON.stringify(replayState.board));
-    const lastMove = replayState.data.moveHistory[replayState.currentMoveIndex];
-    const nextPlayer = lastMove ? (lastMove.player % 2) + 1 : 1;
+    const validMoves = getValidMovesFromHistory(replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1));
+    const lastValidMove = validMoves[validMoves.length - 1];
+    const nextPlayer = lastValidMove ? (lastValidMove.player % 2) + 1 : 1;
     const gameType = prompt("从当前棋局开始一场新的游戏，请选择模式: (输入 'single' 或 'dual')", "dual");
     if (gameType !== 'single' && gameType !== 'dual') return;
     const options = {
-        playerOrder: 'player',
-        aiModel: 'INTERMEDIATE_MODEL',
-        enableForbiddenMoves: false,
-        unifiedColor: '1',
-        initialBoard: capturedBoard,
-        initialPlayer: nextPlayer,
+        playerOrder: 'player', aiModel: 'INTERMEDIATE_MODEL', enableForbiddenMoves: false, unifiedColor: '1',
+        initialBoard: capturedBoard, initialPlayer: nextPlayer,
         initialMoveHistory: replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1)
     };
     startGame('classic', gameType, options);
@@ -637,29 +625,31 @@ function initiateGameFromReplay() {
 
 function renderReplayStep() {
     replayState.board.forEach(row => row.fill(0));
-    for (let i = 0; i <= replayState.currentMoveIndex; i++) {
-        const move = replayState.data.moveHistory[i];
-        replayState.board[move.y][move.x] = move.player;
-    }
+    const validMoves = getValidMovesFromHistory(replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1));
+    validMoves.forEach(move => { replayState.board[move.y][move.x] = move.player; });
+    
     drawReplayBoard();
     replayMoveListEl.innerHTML = '';
-    for (let i = 0; i <= replayState.currentMoveIndex; i++) {
-        const move = replayState.data.moveHistory[i];
+    replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1).slice().reverse().forEach(action => {
         const li = document.createElement('li');
-        const time = new Date(move.timestamp).toLocaleTimeString();
-        let playerText = move.player === 1 ? '黑子' : '白子';
-        li.textContent = `${time} - ${playerText} 落子于 (${move.x}, ${move.y})`;
-        replayMoveListEl.prepend(li);
-    }
+        const time = new Date(action.timestamp).toLocaleTimeString();
+        let text = '';
+        if (action.type === 'place') {
+            text = `${time} - ${action.player === 1 ? '黑子' : '白子'} 落子于 (${action.x}, ${action.y})`;
+        } else {
+            text = `${time} - ${action.player === 1 ? '黑方' : '白方'} 进行了悔棋`;
+            li.style.color = 'var(--secondary-color)'; li.style.fontStyle = 'italic';
+        }
+        li.textContent = text;
+        replayMoveListEl.appendChild(li);
+    });
 }
 
 function handleReplayNext() {
     if (replayState.currentMoveIndex < replayState.data.moveHistory.length - 1) {
         replayState.currentMoveIndex++;
         renderReplayStep();
-    } else {
-        if (replayState.isPlaying) handleReplayPlayPause();
-    }
+    } else { if (replayState.isPlaying) handleReplayPlayPause(); }
 }
 
 function handleReplayPrev() {
@@ -682,9 +672,10 @@ function scheduleNextMove() {
         if (replayState.isPlaying) handleReplayPlayPause();
         return;
     }
-    const currentMove = replayState.data.moveHistory[replayState.currentMoveIndex];
-    const nextMove = replayState.data.moveHistory[replayState.currentMoveIndex + 1];
-    const timeDiff = nextMove.timestamp - (currentMove ? currentMove.timestamp : replayState.data.gameInfo.startTime);
+    const currentAction = replayState.data.moveHistory[replayState.currentMoveIndex];
+    const nextAction = replayState.data.moveHistory[replayState.currentMoveIndex + 1];
+    let timeDiff = nextAction.timestamp - (currentAction ? currentAction.timestamp : replayState.data.gameInfo.startTime);
+    if (nextAction.type === 'undo') timeDiff = 1000; // 悔棋步骤固定1秒
     const delay = Math.max(100, timeDiff / replayState.speed);
     replayState.timerId = setTimeout(() => {
         handleReplayNext();
@@ -695,7 +686,6 @@ function scheduleNextMove() {
 
 // --- 绘图函数 ---
 function drawBoard() {
-    const ctx = boardCanvas.getContext('2d');
     ctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
     ctx.fillStyle = 'hsla(34, 59%, 68%, 1)';
     ctx.fillRect(0,0,boardCanvas.width, boardCanvas.height);
@@ -703,84 +693,74 @@ function drawBoard() {
     ctx.lineWidth = 1;
     for (let i = 0; i < GRID_SIZE; i++) {
         const pos = CELL_SIZE / 2 + i * CELL_SIZE;
-        ctx.beginPath();
-        ctx.moveTo(pos, CELL_SIZE / 2);
-        ctx.lineTo(pos, boardCanvas.height - CELL_SIZE / 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(CELL_SIZE / 2, pos);
-        ctx.lineTo(boardCanvas.width - CELL_SIZE / 2, pos);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pos, CELL_SIZE / 2); ctx.lineTo(pos, boardCanvas.height - CELL_SIZE / 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(CELL_SIZE / 2, pos); ctx.lineTo(boardCanvas.width - CELL_SIZE / 2, pos); ctx.stroke();
     }
     const starPoints = [ {x:3, y:3}, {x:11, y:3}, {x:7, y:7}, {x:3, y:11}, {x:11, y:11} ];
     ctx.fillStyle = 'hsla(34, 41%, 29%, 1)';
-    starPoints.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(CELL_SIZE/2 + p.x*CELL_SIZE, CELL_SIZE/2 + p.y*CELL_SIZE, CELL_SIZE/8, 0, 2*Math.PI);
-        ctx.fill();
-    });
+    starPoints.forEach(p => { ctx.beginPath(); ctx.arc(CELL_SIZE/2 + p.x*CELL_SIZE, CELL_SIZE/2 + p.y*CELL_SIZE, CELL_SIZE/8, 0, 2*Math.PI); ctx.fill(); });
 }
 
 function drawPieces() {
-    const lastMove = gameState.moveHistory[gameState.moveHistory.length - 1];
+    const validMoves = getValidMovesFromHistory();
+    const lastMove = validMoves[validMoves.length - 1];
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
             if (gameState.board[y][x] !== 0) {
                 const piecePlayer = gameState.board[y][x];
-                drawPiece(boardCanvas.getContext('2d'), x, y, piecePlayer);
+                drawPiece(ctx, x, y, piecePlayer);
                 if (lastMove && lastMove.x === x && lastMove.y === y) {
-                    drawRedDot(boardCanvas.getContext('2d'), x, y);
+                    drawRedDot(ctx, x, y);
                 }
             }
         }
     }
 }
 
-function drawPiece(ctx, x, y, player) {
-    ctx.beginPath();
+function drawPiece(context, x, y, player) {
+    context.beginPath();
     const radius = CELL_SIZE / 2 * 0.9;
     const centerX = CELL_SIZE / 2 + x * CELL_SIZE;
     const centerY = CELL_SIZE / 2 + y * CELL_SIZE;
-    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    context.arc(centerX, centerY, radius, 0, 2 * Math.PI);
     let pieceColor;
     if (gameState.isGameActive && gameState.mode === 'higher' && !gameState.isTrueBoardVisible) {
         pieceColor = gameState.gameOptions.unifiedColor === '1' ? 'black' : 'white';
     } else {
         pieceColor = player === 1 ? 'black' : 'white';
     }
-    ctx.fillStyle = pieceColor;
-    ctx.fill();
-    ctx.strokeStyle = '#555';
-    ctx.stroke();
+    context.fillStyle = pieceColor;
+    context.fill();
+    context.strokeStyle = '#555';
+    context.stroke();
 }
 
-function drawRedDot(ctx, x, y) {
-    ctx.beginPath();
+function drawRedDot(context, x, y) {
+    context.beginPath();
     const radius = CELL_SIZE / 8;
     const centerX = CELL_SIZE / 2 + x * CELL_SIZE;
     const centerY = CELL_SIZE / 2 + y * CELL_SIZE;
-    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-    ctx.fillStyle = 'red';
-    ctx.fill();
+    context.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    context.fillStyle = 'red';
+    context.fill();
 }
 
 function drawReplayBoard() {
-    const ctx = replayCtx;
-    ctx.clearRect(0, 0, replayBoardCanvas.width, replayBoardCanvas.height);
-    ctx.fillStyle = 'hsla(34, 59%, 68%, 1)';
-    ctx.fillRect(0,0,replayBoardCanvas.width, replayBoardCanvas.height);
-    ctx.strokeStyle = 'hsla(34, 41%, 29%, 1)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < GRID_SIZE; i++) { const pos = CELL_SIZE / 2 + i * CELL_SIZE; ctx.beginPath(); ctx.moveTo(pos, CELL_SIZE / 2); ctx.lineTo(pos, replayBoardCanvas.height - CELL_SIZE / 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(CELL_SIZE / 2, pos); ctx.lineTo(replayBoardCanvas.width - CELL_SIZE / 2, pos); ctx.stroke(); }
-
-    const lastMove = replayState.data.moveHistory[replayState.currentMoveIndex];
+    const context = replayCtx;
+    context.clearRect(0, 0, replayBoardCanvas.width, replayBoardCanvas.height);
+    context.fillStyle = 'hsla(34, 59%, 68%, 1)';
+    context.fillRect(0,0,replayBoardCanvas.width, replayBoardCanvas.height);
+    context.strokeStyle = 'hsla(34, 41%, 29%, 1)';
+    context.lineWidth = 1;
+    for (let i = 0; i < GRID_SIZE; i++) { const pos = CELL_SIZE / 2 + i * CELL_SIZE; context.beginPath(); context.moveTo(pos, CELL_SIZE / 2); context.lineTo(pos, replayBoardCanvas.height - CELL_SIZE / 2); context.stroke(); context.beginPath(); context.moveTo(CELL_SIZE / 2, pos); context.lineTo(replayBoardCanvas.width - CELL_SIZE / 2, pos); context.stroke(); }
+    const lastMove = getValidMovesFromHistory(replayState.data.moveHistory.slice(0, replayState.currentMoveIndex + 1)).pop();
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
             if (replayState.board[y][x] !== 0) {
                 const player = replayState.board[y][x];
-                drawPiece(ctx, x, y, player);
+                drawPiece(context, x, y, player);
                 if (lastMove && lastMove.x === x && lastMove.y === y) {
-                    drawRedDot(ctx, x, y);
+                    drawRedDot(context, x, y);
                 }
             }
         }
